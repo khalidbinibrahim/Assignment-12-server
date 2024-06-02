@@ -30,6 +30,7 @@ async function run() {
   try {
     await client.connect();
     const petsCollection = client.db("petsDB").collection("pets");
+    const adoptionsCollection = client.db("petsDB").collection("adoptions");
 
     // ==========----- GET -----==========
     // get all pets data from database
@@ -80,8 +81,20 @@ async function run() {
       pet.date = new Date();
       try {
         const result = await petsCollection.insertOne(pet);
-        res.status(201).send(result.ops[0]);
+        res.status(201).send(result);
       } catch (error) {
+        res.status(400).send(error);
+      }
+    });
+
+    app.post('/adoptions', async (req, res) => {
+      const adoption = req.body;
+      console.log("Received adoption request:", adoption);
+      try {
+        const result = await adoptionsCollection.insertOne(adoption);
+        res.status(201).send(result);
+      } catch (error) {
+        console.error("Error inserting adoption request:", error);
         res.status(400).send(error);
       }
     });
