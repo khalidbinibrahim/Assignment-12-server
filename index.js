@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 
@@ -12,9 +14,11 @@ app.use(cors({
     'http://localhost:5173',
     'https://khalid-bin-ibrahim-a12.web.app',
     'https://khalid-bin-ibrahim-a12.firebaseapp.com'
-  ]
+  ],
+  credentials: true
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hguto33.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -31,6 +35,21 @@ async function run() {
     await client.connect();
     const petsCollection = client.db("petsDB").collection("pets");
     const adoptionsCollection = client.db("petsDB").collection("adoptions");
+    const usersCollection = client.db("petsDB").collection("users");
+
+    // ==========----- AUTH RELATED API -----==========
+    app.post('/jwt', async (req, res) => {
+      const user = req.body;
+      // console.log(user);
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '6h' });
+
+      res
+      .cookie('token', token, {
+        httpOnly: true,
+        secure: false
+      })
+      .send({ message: 'Your access token successfully send' })
+    })
 
     // ==========----- GET -----==========
     // get all pets data from database
@@ -69,6 +88,7 @@ async function run() {
     // get one pet data from database
     app.get('/pets/:id', async (req, res) => {
       const petId = req.params.id;
+      // console.log('tok tok token', req.cookies.token);
       const query = { _id: new ObjectId(petId) };
       const result = await petsCollection.find(query).toArray();
       res.json(result);
@@ -89,7 +109,7 @@ async function run() {
 
     app.post('/adoptions', async (req, res) => {
       const adoption = req.body;
-      console.log("Received adoption request:", adoption);
+      // console.log("Received adoption request:", adoption);
       try {
         const result = await adoptionsCollection.insertOne(adoption);
         res.status(201).send(result);
