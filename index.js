@@ -20,6 +20,27 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// JWT middleware
+const verifyToken = async (req, res, next) => {
+    const token = req?.cookies?.token;
+
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        // ERROR
+        if (err) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // DECODED
+        console.log('value in the token', decoded);
+        req.user = decoded;
+        next();
+    });
+}
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hguto33.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const client = new MongoClient(uri, {
@@ -40,16 +61,16 @@ async function run() {
     // ==========----- AUTH RELATED API -----==========
     app.post('/jwt', async (req, res) => {
       const user = req.body;
-      // console.log(user);
+      console.log(user);
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '6h' });
 
       res
-      .cookie('token', token, {
-        httpOnly: true,
-        secure: false
-      })
-      .send({ message: 'Your access token successfully send' })
-    })
+        .cookie('token', token, {
+          httpOnly: true,
+          secure: false
+        })
+        .send({ message: 'Your access token successfully sent' });
+    });
 
     // ==========----- GET -----==========
     // get all pets data from database
@@ -86,9 +107,9 @@ async function run() {
     });
 
     // get one pet data from database
-    app.get('/pets/:id', async (req, res) => {
+    app.get('/pets/:id', verifyToken, async (req, res) => {
       const petId = req.params.id;
-      // console.log('tok tok token', req.cookies.token);
+      console.log('tok tok token', req.cookies.token);
       const query = { _id: new ObjectId(petId) };
       const result = await petsCollection.find(query).toArray();
       res.json(result);
@@ -109,7 +130,6 @@ async function run() {
 
     app.post('/adoptions', async (req, res) => {
       const adoption = req.body;
-      // console.log("Received adoption request:", adoption);
       try {
         const result = await adoptionsCollection.insertOne(adoption);
         res.status(201).send(result);
