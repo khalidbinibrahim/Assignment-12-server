@@ -25,17 +25,17 @@ const verifyToken = async (req, res, next) => {
   const token = req?.cookies?.token;
 
   if (!token) {
-    // console.log("No token found");
+    console.log("No token found");
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
-      // console.log("Token verification failed", err);
+      console.log("Token verification failed", err);
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // console.log('Token successfully verified', decoded);
+    console.log('Token successfully verified', decoded);
     req.user = decoded;
     next();
   });
@@ -57,11 +57,12 @@ async function run() {
     const petsCollection = client.db("petsDB").collection("pets");
     const adoptionsCollection = client.db("petsDB").collection("adoptions");
     const usersCollection = client.db("petsDB").collection("users");
+    const campaignsCollection = client.db("petsDB").collection("campaigns");
 
     // ==========----- AUTH RELATED API -----==========
     app.post('/jwt', async (req, res) => {
       const user = req.body;
-      // console.log(user);
+      console.log(user);
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '6h' });
 
       res
@@ -110,10 +111,28 @@ async function run() {
     // get one pet data from database
     app.get('/pets/:id', verifyToken, async (req, res) => {
       const petId = req.params.id;
-      // console.log('tok tok token', req.cookies.token);
+      console.log('tok tok token', req.cookies.token);
       const query = { _id: new ObjectId(petId) };
       const result = await petsCollection.find(query).toArray();
       res.json(result);
+    });
+
+    app.get('/campaigns', async (req, res) => {
+      const { page = 1, limit = 9 } = req.query;
+      const skip = (page - 1) * limit;
+    
+      try {
+        const campaigns = await campaignsCollection
+          .find()
+          .sort({ date: -1 })
+          .skip(parseInt(skip))
+          .limit(parseInt(limit))
+          .toArray();
+    
+        res.json(campaigns);
+      } catch (error) {
+        res.status(500).send(error);
+      }
     });
 
     // ==========----- POST -----==========
@@ -131,7 +150,7 @@ async function run() {
 
     app.post('/adoptions', verifyToken, async (req, res) => {
       const adoption = req.body;
-      // console.log('ttttttttttttt token', req.cookies.token);
+      console.log('ttttttttttttt token', req.cookies.token);
       try {
         const result = await adoptionsCollection.insertOne(adoption);
         res.status(201).send(result);
