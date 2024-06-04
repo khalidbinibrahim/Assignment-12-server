@@ -22,24 +22,23 @@ app.use(cookieParser());
 
 // JWT middleware
 const verifyToken = async (req, res, next) => {
-  const token = req?.cookies?.token;
+  const authHeader = req.headers.authorization;
 
-  if (!token) {
-    console.log("No token found");
+  if (!authHeader) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const token = authHeader.split(' ')[1];
+
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
-      console.log("Token verification failed", err);
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    console.log('Token successfully verified', decoded);
     req.user = decoded;
     next();
   });
-}
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hguto33.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -60,18 +59,15 @@ async function run() {
     const campaignsCollection = client.db("petsDB").collection("campaigns");
 
     // ==========----- AUTH RELATED API -----==========
+
     app.post('/jwt', async (req, res) => {
       const user = req.body;
-      console.log(user);
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '6h' });
 
-      res
-        .cookie('token', token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'Strict'
-        })
-        .send({ message: 'Your access token successfully sent' });
+      res.send({
+        message: 'Your access token successfully sent',
+        token
+      });
     });
 
     // ==========----- GET -----==========
@@ -111,10 +107,14 @@ async function run() {
     // get one pet data from database
     app.get('/pets/:id', verifyToken, async (req, res) => {
       const petId = req.params.id;
-      console.log('tok tok token', req.cookies.token);
-      const query = { _id: new ObjectId(petId) };
-      const result = await petsCollection.find(query).toArray();
-      res.json(result);
+      try {
+        const query = { _id: new ObjectId(petId) };
+        const result = await petsCollection.find(query).toArray();
+        res.json(result);
+      } catch (error) {
+        console.error('Error retrieving pet data:', error);
+        res.status(500).send(error);
+      }
     });
 
     app.get('/campaigns', async (req, res) => {
@@ -150,7 +150,6 @@ async function run() {
 
     app.post('/adoptions', verifyToken, async (req, res) => {
       const adoption = req.body;
-      console.log('ttttttttttttt token', req.cookies.token);
       try {
         const result = await adoptionsCollection.insertOne(adoption);
         res.status(201).send(result);
