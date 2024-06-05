@@ -136,6 +136,19 @@ async function run() {
     });
 
     // ==========----- POST -----==========
+
+    app.post('/users', async (req, res) => {
+      const user = req.body;
+      const query = { email: user.email }
+      const existingUser = await usersCollection.findOne(query);
+      if(existingUser) {
+        return res.send({ message: 'user already exists', insertedId: null })
+      }
+
+      const result = await usersCollection.insertOne(user);
+      res.status(201).send(result);
+    })
+
     // sign in user data adding in database
     app.post('/pets', async (req, res) => {
       const pet = req.body;
