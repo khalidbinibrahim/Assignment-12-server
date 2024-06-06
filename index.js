@@ -110,7 +110,7 @@ async function run() {
       try {
         const query = { _id: new ObjectId(petId) };
         const result = await petsCollection.find(query).toArray();
-        res.json(result);
+        res.send(result);
       } catch (error) {
         console.error('Error retrieving pet data:', error);
         res.status(500).send(error);
@@ -136,7 +136,7 @@ async function run() {
     });
 
     // ==========----- POST -----==========
-
+    // sign in user data adding in database
     app.post('/users', async (req, res) => {
       const user = req.body;
       const query = { email: user.email }
@@ -149,7 +149,6 @@ async function run() {
       res.status(201).send(result);
     })
 
-    // sign in user data adding in database
     app.post('/pets', async (req, res) => {
       const pet = req.body;
       pet.date = new Date();
@@ -169,6 +168,32 @@ async function run() {
       } catch (error) {
         console.error("Error inserting adoption request:", error);
         res.status(400).send(error);
+      }
+    });
+
+    app.post('/pets', async (req, res) => {
+      try {
+        const { petImage, petName, petAge, petCategory, petLocation, shortDescription, longDescription, dateAdded, adopted } = req.body;
+    
+        const newPet = {
+          petImage,
+          petName,
+          petAge,
+          petCategory,
+          petLocation,
+          shortDescription,
+          longDescription,
+          dateAdded,
+          adopted,
+        };
+    
+        await petsCollection.insertOne(newPet);
+        res.status(201).send('Pet added successfully');
+      } catch (error) {
+        console.error('Error adding pet', error);
+        res.status(500).send('Error adding pet');
+      } finally {
+        await client.close();
       }
     });
 
