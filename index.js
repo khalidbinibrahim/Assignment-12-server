@@ -120,7 +120,7 @@ async function run() {
     app.get('/campaigns', async (req, res) => {
       const { page = 1, limit = 9 } = req.query;
       const skip = (page - 1) * limit;
-    
+
       try {
         const campaigns = await campaignsCollection
           .find()
@@ -128,7 +128,7 @@ async function run() {
           .skip(parseInt(skip))
           .limit(parseInt(limit))
           .toArray();
-    
+
         res.json(campaigns);
       } catch (error) {
         res.status(500).send(error);
@@ -141,23 +141,12 @@ async function run() {
       const user = req.body;
       const query = { email: user.email }
       const existingUser = await usersCollection.findOne(query);
-      if(existingUser) {
+      if (existingUser) {
         return res.send({ message: 'user already exists', insertedId: null })
       }
 
       const result = await usersCollection.insertOne(user);
       res.status(201).send(result);
-    })
-
-    app.post('/pets', async (req, res) => {
-      const pet = req.body;
-      pet.date = new Date();
-      try {
-        const result = await petsCollection.insertOne(pet);
-        res.status(201).send(result);
-      } catch (error) {
-        res.status(400).send(error);
-      }
     });
 
     app.post('/adoptions', verifyToken, async (req, res) => {
@@ -171,10 +160,10 @@ async function run() {
       }
     });
 
-    app.post('/pets', async (req, res) => {
+    app.post('/pets', verifyToken, async (req, res) => {
       try {
-        const { petImage, petName, petAge, petCategory, petLocation, shortDescription, longDescription, dateAdded, adopted } = req.body;
-    
+        const { petImage, petName, petAge, petCategory, petLocation, shortDescription, longDescription, dateAdded, adopted, userEmail } = req.body;
+
         const newPet = {
           petImage,
           petName,
@@ -185,15 +174,50 @@ async function run() {
           longDescription,
           dateAdded,
           adopted,
+          userEmail
         };
-    
-        await petsCollection.insertOne(newPet);
-        res.status(201).send('Pet added successfully');
+
+        const result = await petsCollection.insertOne(newPet);
+        res.status(201).send(result);
       } catch (error) {
         console.error('Error adding pet', error);
         res.status(500).send('Error adding pet');
-      } finally {
-        await client.close();
+      }
+    });
+
+    // ==========----- PATCH/PUT -----==========
+    // PATCH (update) adoption status of a pet by ID
+    app.patch('/pets/:id', async (req, res) => {
+      const petId = req.params.id;
+      const { adopted } = req.body;
+      try {
+        const result = await petsCollection.updateOne(
+          { _id: new ObjectId(petId) },
+          { $set: { adopted: adopted } }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).send('Pet not found');
+        }
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error updating adoption status:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // ==========----- DELETE -----==========
+    // DELETE a pet by ID
+    app.delete('/pets/:id', verifyToken, async (req, res) => {
+      const petId = req.params.id;
+      try {
+        const result = await petsCollection.deleteOne({ _id: new ObjectId(petId) });
+        if (result.deletedCount === 0) {
+          return res.status(404).send('Pet not found');
+        }
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error deleting pet:', error);
+        res.status(500).send('Internal Server Error');
       }
     });
 
