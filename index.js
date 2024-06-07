@@ -98,7 +98,7 @@ async function run() {
     });
 
     // get single user pets data from database
-    app.get('/user_pets/:id', async (req, res) => {
+    app.get('/user_pets/:id', verifyToken, async (req, res) => {
       const userId = req.params.id;
       const result = await petsCollection.find({ user_id: userId }).toArray();
       res.json(result);
@@ -185,9 +185,36 @@ async function run() {
       }
     });
 
+    // creating donation campaigns
+    app.post('/donation_campaigns', verifyToken, async (req, res) => {
+      try {
+        // Extract fields from request body
+        const { petPicture, maxDonationAmount, lastDateOfDonation, shortDescription, longDescription, userEmail } = req.body;
+    
+        // Prepare data for creating donation campaign
+        const newCampaign = {
+          petPicture,
+          maxDonationAmount,
+          lastDateOfDonation,
+          shortDescription,
+          longDescription,
+          createdAt: new Date(),
+          userEmail
+        };
+    
+        const result = await campaignsCollection.insertOne(newCampaign);
+    
+        // Return success response
+        res.status(201).json({ message: 'Donation campaign created successfully', campaignId: result.insertedId });
+      } catch (error) {
+        console.error('Error creating donation campaign:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
     // ==========----- PATCH/PUT -----==========
     // PATCH (update) adoption status of a pet by ID
-    app.patch('/pets/:id', async (req, res) => {
+    app.patch('/pets/:id', verifyToken, async (req, res) => {
       const petId = req.params.id;
       const { adopted } = req.body;
       try {
