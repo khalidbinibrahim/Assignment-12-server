@@ -104,6 +104,19 @@ async function run() {
       res.json(result);
     });
 
+    app.get('/user_adoption_requests', verifyToken, async (req, res) => {
+      const userEmail = req.user.email;
+      try {
+        const userPets = await petsCollection.find({ userEmail }).toArray();
+        const petIds = userPets.map(pet => pet._id.toString());
+        const adoptionRequests = await adoptionsCollection.find({ petId: { $in: petIds } }).toArray();
+        res.json(adoptionRequests);
+      } catch (error) {
+        console.error('Error fetching adoption requests:', error);
+        res.status(500).send(error);
+      }
+    });
+
     // get one pet data from database
     app.get('/pets/:id', verifyToken, async (req, res) => {
       const petId = req.params.id;
@@ -190,7 +203,7 @@ async function run() {
       try {
         // Extract fields from request body
         const { petPicture, maxDonationAmount, lastDateOfDonation, shortDescription, longDescription, userEmail } = req.body;
-    
+
         // Prepare data for creating donation campaign
         const newCampaign = {
           petPicture,
@@ -201,9 +214,9 @@ async function run() {
           createdAt: new Date(),
           userEmail
         };
-    
+
         const result = await campaignsCollection.insertOne(newCampaign);
-    
+
         // Return success response
         res.status(201).json({ message: 'Donation campaign created successfully', campaignId: result.insertedId });
       } catch (error) {
@@ -228,6 +241,24 @@ async function run() {
         res.status(204).send();
       } catch (error) {
         console.error('Error updating adoption status:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    app.patch('/adoption_requests/:id', verifyToken, async (req, res) => {
+      const requestId = req.params.id;
+      const { status } = req.body; // status can be 'accepted' or 'rejected'
+      try {
+        const result = await adoptionsCollection.updateOne(
+          { _id: new ObjectId(requestId) },
+          { $set: { status } }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).send('Adoption request not found');
+        }
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error updating adoption request status:', error);
         res.status(500).send('Internal Server Error');
       }
     });
