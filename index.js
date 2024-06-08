@@ -58,6 +58,18 @@ async function run() {
     const usersCollection = client.db("petsDB").collection("users");
     const campaignsCollection = client.db("petsDB").collection("campaigns");
 
+    // Middleware to check if the user is an admin
+    const verifyAdmin = async (req, res, next) => {
+      const userEmail = req.user.email;
+      const user = await usersCollection.findOne({ email: userEmail });
+
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      next();
+    };
+
     // ==========----- AUTH RELATED API -----==========
 
     app.post('/jwt', async (req, res) => {
@@ -69,6 +81,33 @@ async function run() {
         token
       });
     });
+
+    // ==========----- GET (ADMIN) -----==========
+    // Get all users (Admin only)
+    app.get('/admin/users', verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const users = await usersCollection.find().toArray();
+        res.json(users);
+      } catch (error) {
+        res.status(500).send(error);
+      }
+    });
+
+    app.get('/users/admin/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+
+      if (email !== req.user.email) {
+        return res.status(403).send({ message: 'Forbidden access' })
+      }
+
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.role === 'admin';
+      }
+      res.send({ admin });
+    })
 
     // ==========----- GET -----==========
     // get all pets data from database
@@ -97,6 +136,7 @@ async function run() {
       }
     });
 
+    // get currently logged in user pets
     app.get('/user_pets', verifyToken, async (req, res) => {
       const userEmail = req.user.email;  // Get the email of the logged-in user from the token
 
@@ -109,7 +149,7 @@ async function run() {
       }
     });
 
-
+    // get currently logged in user adoption requests
     app.get('/user_adoption_requests', verifyToken, async (req, res) => {
       const userEmail = req.user.email;
       try {
@@ -136,6 +176,7 @@ async function run() {
       }
     });
 
+    // get all donation campaigns
     app.get('/campaigns', async (req, res) => {
       const { page = 1, limit = 9 } = req.query;
       const skip = (page - 1) * limit;
@@ -168,6 +209,7 @@ async function run() {
       res.status(201).send(result);
     });
 
+    // add a adoption request
     app.post('/adoptions', verifyToken, async (req, res) => {
       const adoption = req.body;
       try {
@@ -179,6 +221,7 @@ async function run() {
       }
     });
 
+    // post a pet
     app.post('/pets', verifyToken, async (req, res) => {
       try {
         const { petImage, petName, petAge, petCategory, petLocation, shortDescription, longDescription, dateAdded, adopted, userEmail } = req.body;
@@ -231,6 +274,43 @@ async function run() {
       }
     });
 
+    // ==========----- PATCH/PUT (ADMIN) -----==========
+    // PATCH (update) to make a user an admin (Admin only)
+    app.patch('/admin/make_admin/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const userId = req.params.id;
+      try {
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(userId) },
+          { $set: { role: 'admin' } }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).send('User not found');
+        }
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error making user admin:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // PATCH (update) to ban a user (Admin only)
+    app.patch('/admin/ban_user/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const userId = req.params.id;
+      try {
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(userId) },
+          { $set: { banned: true } }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).send('User not found');
+        }
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error banning user:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
     // ==========----- PATCH/PUT -----==========
     // PATCH (update) adoption status of a pet by ID
     app.patch('/pets/:id', verifyToken, async (req, res) => {
@@ -251,6 +331,7 @@ async function run() {
       }
     });
 
+    // update an adoption request
     app.patch('/adoption_requests/:id', verifyToken, async (req, res) => {
       const requestId = req.params.id;
       const { status } = req.body; // status can be 'accepted' or 'rejected'
@@ -269,6 +350,21 @@ async function run() {
       }
     });
 
+    // ==========----- DELETE (ADMIN) -----==========
+    app.delete('/admin/delete_user/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const userId = req.params.id;
+      try {
+        const result = await usersCollection.deleteOne({ _id: new ObjectId(userId) });
+        if (result.deletedCount === 0) {
+          return res.status(404).send('User not found');
+        }
+        res.status(204).send(result);
+      } catch (error) {
+        console.error('Error deleting pet:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    })
+
     // ==========----- DELETE -----==========
     // DELETE a pet by ID
     app.delete('/pets/:id', verifyToken, async (req, res) => {
@@ -278,7 +374,7 @@ async function run() {
         if (result.deletedCount === 0) {
           return res.status(404).send('Pet not found');
         }
-        res.status(204).send();
+        res.status(204).send(result);
       } catch (error) {
         console.error('Error deleting pet:', error);
         res.status(500).send('Internal Server Error');
