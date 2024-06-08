@@ -52,7 +52,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const petsCollection = client.db("petsDB").collection("pets");
     const adoptionsCollection = client.db("petsDB").collection("adoptions");
     const usersCollection = client.db("petsDB").collection("users");
@@ -97,12 +97,18 @@ async function run() {
       }
     });
 
-    // get single user pets data from database
-    app.get('/user_pets/:id', verifyToken, async (req, res) => {
-      const userId = req.params.id;
-      const result = await petsCollection.find({ user_id: userId }).toArray();
-      res.json(result);
+    app.get('/user_pets', verifyToken, async (req, res) => {
+      const userEmail = req.user.email;  // Get the email of the logged-in user from the token
+
+      try {
+        const pets = await petsCollection.find({ userEmail }).sort({ date: -1 }).toArray();
+        res.json({ pets });
+      } catch (error) {
+        console.error('Error retrieving user pets:', error);
+        res.status(500).send('Internal Server Error');
+      }
     });
+
 
     app.get('/user_adoption_requests', verifyToken, async (req, res) => {
       const userEmail = req.user.email;
