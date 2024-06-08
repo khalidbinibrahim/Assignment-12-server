@@ -57,6 +57,7 @@ async function run() {
     const adoptionsCollection = client.db("petsDB").collection("adoptions");
     const usersCollection = client.db("petsDB").collection("users");
     const campaignsCollection = client.db("petsDB").collection("campaigns");
+    const donatorsCollection = client.db("petsDB").collection("donators");
 
     // Middleware to check if the user is an admin
     const verifyAdmin = async (req, res, next) => {
@@ -195,6 +196,30 @@ async function run() {
       }
     });
 
+    // get currently logged in user donation campaigns
+    app.get('/user_donations', verifyToken, async (req, res) => {
+      const userEmail = req.user.email;
+      try {
+        const campaigns = await campaignsCollection.find({ userEmail }).sort({ createdAt: -1 }).toArray();
+        res.json({ campaigns });
+      } catch (error) {
+        console.error('Error retrieving user campaigns:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // GET donators for a specific donation campaign
+    app.get('/donations/donators/:id', verifyToken, async (req, res) => {
+      const donationId = req.params.id;
+      try {
+        const donators = await donatorsCollection.find({ donationId: new ObjectId(donationId) }).toArray();
+        res.status(200).json(donators);
+      } catch (error) {
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+
     // ==========----- POST -----==========
     // sign in user data adding in database
     app.post('/users', async (req, res) => {
@@ -251,10 +276,11 @@ async function run() {
     app.post('/donation_campaigns', verifyToken, async (req, res) => {
       try {
         // Extract fields from request body
-        const { petPicture, maxDonationAmount, lastDateOfDonation, shortDescription, longDescription, userEmail } = req.body;
+        const { petName, petPicture, maxDonationAmount, lastDateOfDonation, shortDescription, longDescription, userEmail } = req.body;
 
         // Prepare data for creating donation campaign
         const newCampaign = {
+          petName,
           petPicture,
           maxDonationAmount,
           lastDateOfDonation,
@@ -271,6 +297,39 @@ async function run() {
       } catch (error) {
         console.error('Error creating donation campaign:', error);
         res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Donating to a campaign
+    app.post('/donations/donators/:id', verifyToken, async (req, res) => {
+      const { amount } = req.body;
+      const userEmail = req.user.email;
+
+      try {
+        const campaignId = new ObjectId(req.params.id);
+        const campaign = await campaignsCollection.findOne({ _id: campaignId });
+
+        if (!campaign) {
+          return res.status(404).json({ message: 'Donation campaign not found' });
+        }
+
+        // Update campaign with new donation amount
+        await campaignsCollection.updateOne(
+          { _id: campaignId },
+          { $inc: { donatedAmount: amount } }
+        );
+
+        // Add donator to donators collection
+        await donatorsCollection.insertOne({
+          donationId: campaignId,
+          userEmail,
+          amount,
+          donatedAt: new Date()
+        });
+
+        res.status(200).json({ message: 'Donation successful' });
+      } catch (error) {
+        res.status(500).json({ message: error.message });
       }
     });
 
@@ -349,6 +408,29 @@ async function run() {
         res.status(500).send('Internal Server Error');
       }
     });
+
+    // PATCH to pause/unpause a donation campaign
+    app.patch('/donations/pause/:id', verifyToken, async (req, res) => {
+      const donationId = req.params.id;
+      try {
+        const donation = await campaignsCollection.findOne({ _id: new ObjectId(donationId) });
+        if (!donation) {
+          return res.status(404).json({ message: 'Donation campaign not found' });
+        }
+
+        // Toggle the paused status
+        const updatedPausedStatus = !donation.paused;
+        await campaignsCollection.updateOne(
+          { _id: new ObjectId(donationId) },
+          { $set: { paused: updatedPausedStatus } }
+        );
+
+        res.status(200).json({ message: `Donation campaign ${updatedPausedStatus ? 'paused' : 'unpaused'} successfully` });
+      } catch (error) {
+        res.status(500).json({ message: error.message });
+      }
+    });
+
 
     // ==========----- DELETE (ADMIN) -----==========
     app.delete('/admin/delete_user/:id', verifyToken, verifyAdmin, async (req, res) => {
