@@ -226,16 +226,17 @@ async function run() {
     });
 
     // get currently logged in user donators
-    app.get('/user_donators', verifyToken, async (req, res) => {
+    app.get('/user_donations', verifyToken, async (req, res) => {
       const userEmail = req.user.email;
 
       try {
-        const donators = await donatorsCollection.find({ user_email: userEmail }).toArray();
-        res.json(donators);
+        const donations = await donatorsCollection.find({ user_email: userEmail }).toArray();
+        res.json(donations);
       } catch (error) {
         res.status(500).send(error);
       }
     });
+
 
     // get currently logged in user donation campaigns
     app.get('/user_donations', verifyToken, async (req, res) => {
@@ -561,6 +562,31 @@ async function run() {
         res.status(500).send('Internal Server Error');
       }
     });
+
+    // Delete a donation (ask for refund)
+    app.delete('/donations/:id', verifyToken, async (req, res) => {
+      const donationId = req.params.id;
+      const userEmail = req.user.email;
+
+      try {
+        const donation = await donatorsCollection.findOne({ _id: new ObjectId(donationId) });
+
+        if (!donation) {
+          return res.status(404).send({ error: 'Donation not found' });
+        }
+
+        if (donation.user_email !== userEmail) {
+          return res.status(403).send({ error: 'You can only refund your own donations' });
+        }
+
+        const result = await donatorsCollection.deleteOne({ _id: new ObjectId(donationId) });
+
+        res.send({ message: 'Donation refunded successfully', result });
+      } catch (error) {
+        res.status(500).send(error);
+      }
+    });
+
 
     app.get('/', (req, res) => {
       res.send('Server is running');
