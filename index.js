@@ -1,9 +1,11 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+// console.log('Stripe Secret Key:', process.env.STRIPE_SECRET_KEY);
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -196,6 +198,45 @@ async function run() {
       }
     });
 
+    // Get campaign details by ID
+    app.get('/campaigns/:id', async (req, res) => {
+      const { id } = req.params;
+
+      try {
+        const campaign = await campaignsCollection.findOne({ _id: new ObjectId(id) });
+        if (!campaign) {
+          return res.status(404).send({ error: 'Campaign not found' });
+        }
+        res.json(campaign);
+      } catch (error) {
+        console.error('Error fetching campaign details:', error);
+        res.status(500).send({ error: 'Failed to fetch campaign details' });
+      }
+    });
+
+
+    // get all donators data from database
+    app.get('/donators', async (req, res) => {
+      try {
+        const donators = await donatorsCollection.find().toArray();
+        res.json(donators);
+      } catch (error) {
+        res.status(500).send(error);
+      }
+    });
+
+    // get currently logged in user donators
+    app.get('/user_donators', verifyToken, async (req, res) => {
+      const userEmail = req.user.email;
+
+      try {
+        const donators = await donatorsCollection.find({ user_email: userEmail }).toArray();
+        res.json(donators);
+      } catch (error) {
+        res.status(500).send(error);
+      }
+    });
+
     // get currently logged in user donation campaigns
     app.get('/user_donations', verifyToken, async (req, res) => {
       const userEmail = req.user.email;
@@ -203,22 +244,26 @@ async function run() {
         const campaigns = await campaignsCollection.find({ userEmail }).sort({ createdAt: -1 }).toArray();
         res.json({ campaigns });
       } catch (error) {
-        console.error('Error retrieving user campaigns:', error);
+        console.error('Error retrieving user donations:', error);
         res.status(500).send('Internal Server Error');
       }
     });
 
-    // GET donators for a specific donation campaign
-    app.get('/donations/donators/:id', verifyToken, async (req, res) => {
-      const donationId = req.params.id;
+    // get recommended campaigns
+    app.get('/recommended_campaigns', verifyToken, async (req, res) => {
       try {
-        const donators = await donatorsCollection.find({ donationId: new ObjectId(donationId) }).toArray();
-        res.status(200).json(donators);
+        const recommendedCampaigns = await campaignsCollection
+          .find({})
+          .limit(3)
+          .sort({ donated: -1 })
+          .toArray();
+
+        res.send(recommendedCampaigns);
       } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Error fetching recommended campaigns:', error);
+        res.status(500).send({ error: 'Failed to fetch recommended campaigns' });
       }
     });
-
 
     // ==========----- POST -----==========
     // sign in user data adding in database
@@ -237,8 +282,16 @@ async function run() {
     // add a adoption request
     app.post('/adoptions', verifyToken, async (req, res) => {
       const adoption = req.body;
+      const { petId } = adoption;
       try {
         const result = await adoptionsCollection.insertOne(adoption);
+
+        const query = { _id: new ObjectId(petId) };
+        
+        await petsCollection
+        .find(query)
+        .updateOne( { $set: { adopted: true } } );
+
         res.status(201).send(result);
       } catch (error) {
         console.error("Error inserting adoption request:", error);
@@ -275,10 +328,8 @@ async function run() {
     // creating donation campaigns
     app.post('/donation_campaigns', verifyToken, async (req, res) => {
       try {
-        // Extract fields from request body
         const { petName, petPicture, maxDonationAmount, lastDateOfDonation, shortDescription, longDescription, userEmail } = req.body;
 
-        // Prepare data for creating donation campaign
         const newCampaign = {
           petName,
           petPicture,
@@ -287,12 +338,11 @@ async function run() {
           shortDescription,
           longDescription,
           createdAt: new Date(),
-          userEmail
+          donatedAmount: 0,
+          userEmail,
         };
 
         const result = await campaignsCollection.insertOne(newCampaign);
-
-        // Return success response
         res.status(201).json({ message: 'Donation campaign created successfully', campaignId: result.insertedId });
       } catch (error) {
         console.error('Error creating donation campaign:', error);
@@ -300,38 +350,68 @@ async function run() {
       }
     });
 
-    // Donating to a campaign
+    // add donators data to the database
     app.post('/donations/donators/:id', verifyToken, async (req, res) => {
-      const { amount } = req.body;
+      const { id } = req.params;
+      const { amount, paymentMethodId } = req.body;
       const userEmail = req.user.email;
+      // console.log(userEmail, id);
 
       try {
-        const campaignId = new ObjectId(req.params.id);
-        const campaign = await campaignsCollection.findOne({ _id: campaignId });
-
-        if (!campaign) {
-          return res.status(404).json({ message: 'Donation campaign not found' });
+        // Fetch the user details
+        const user = await usersCollection.findOne({ email: userEmail });
+        if (!user) {
+          return res.status(404).send({ error: 'User not found' });
         }
+        // console.log(user);
 
-        // Update campaign with new donation amount
-        await campaignsCollection.updateOne(
-          { _id: campaignId },
-          { $inc: { donatedAmount: amount } }
-        );
+        // Fetch the donation details
+        const donation = await campaignsCollection.findOne({ _id: new ObjectId(id) });
+        if (!donation) {
+          return res.status(404).send({ error: 'Donation not found' });
+        }
+        // console.log(donation);
 
-        // Add donator to donators collection
-        await donatorsCollection.insertOne({
-          donationId: campaignId,
-          userEmail,
-          amount,
-          donatedAt: new Date()
+        // Convert amount to cents
+        const amountInCents = parseInt(amount * 100);
+
+        // Create a payment intent with Stripe
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents,
+          currency: 'usd',
+          automatic_payment_methods: {
+            enabled: true,
+            allow_redirects: 'never'
+          },
         });
 
-        res.status(200).json({ message: 'Donation successful' });
+        // Save the donator's information and update the donation
+        const donator = {
+          user_id: user._id,
+          user_name: user.name,
+          user_email: user.email,
+          donation_id: donation._id,
+          pet_name: donation.petName,
+          amount: amountInCents,
+          payment_intent_id: paymentIntent.id,
+          date: new Date(),
+        };
+
+        await donatorsCollection.insertOne(donator);
+
+        // Update the donation with the donated amount
+        await campaignsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { donated: amountInCents } }
+        );
+
+        res.status(200).send({ success: true });
       } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Error processing donation:', error);
+        res.status(500).send({ error: 'Failed to process donation' });
       }
     });
+
 
     // ==========----- PATCH/PUT (ADMIN) -----==========
     // PATCH (update) to make a user an admin (Admin only)
@@ -431,7 +511,6 @@ async function run() {
       }
     });
 
-
     // ==========----- DELETE (ADMIN) -----==========
     app.delete('/admin/delete_user/:id', verifyToken, verifyAdmin, async (req, res) => {
       const userId = req.params.id;
@@ -445,7 +524,7 @@ async function run() {
         console.error('Error deleting pet:', error);
         res.status(500).send('Internal Server Error');
       }
-    })
+    });
 
     // ==========----- DELETE -----==========
     // DELETE a pet by ID
