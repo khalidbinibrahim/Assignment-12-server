@@ -110,7 +110,17 @@ async function run() {
         admin = user?.role === 'admin';
       }
       res.send({ admin });
-    })
+    });
+
+    // GET all pets (protected)
+    app.get('/admin/all_pets', verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const pets = await petsCollection.find().toArray();
+        res.json(pets);
+      } catch (error) {
+        res.status(500).send(error);
+      }
+    });
 
     // ==========----- GET -----==========
     // get all pets data from database
@@ -451,6 +461,25 @@ async function run() {
       }
     });
 
+    // PATCH (update) to change pet's adoption status by ID (Admin only)
+    app.patch('/admin/pets/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const petId = req.params.id;
+      const { adopted } = req.body;
+      try {
+        const result = await petsCollection.updateOne(
+          { _id: new ObjectId(petId) },
+          { $set: { adopted: adopted } }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).send('Pet not found');
+        }
+        res.status(204).send(result);
+      } catch (error) {
+        console.error('Error updating adoption status:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
     // ==========----- PATCH/PUT -----==========
     // PATCH (update) adoption status of a pet by ID
     app.patch('/pets/:id', verifyToken, async (req, res) => {
@@ -539,6 +568,21 @@ async function run() {
         const result = await usersCollection.deleteOne({ _id: new ObjectId(userId) });
         if (result.deletedCount === 0) {
           return res.status(404).send('User not found');
+        }
+        res.status(204).send(result);
+      } catch (error) {
+        console.error('Error deleting pet:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // DELETE a pet by ID (Admin only)
+    app.delete('/admin/pets/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const petId = req.params.id;
+      try {
+        const result = await petsCollection.deleteOne({ _id: new ObjectId(petId) });
+        if (result.deletedCount === 0) {
+          return res.status(404).send('Pet not found');
         }
         res.status(204).send(result);
       } catch (error) {
