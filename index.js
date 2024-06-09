@@ -287,10 +287,10 @@ async function run() {
         const result = await adoptionsCollection.insertOne(adoption);
 
         const query = { _id: new ObjectId(petId) };
-        
+
         await petsCollection
-        .find(query)
-        .updateOne( { $set: { adopted: true } } );
+          .find(query)
+          .updateOne({ $set: { adopted: true } });
 
         res.status(201).send(result);
       } catch (error) {
@@ -463,9 +463,29 @@ async function run() {
         if (result.matchedCount === 0) {
           return res.status(404).send('Pet not found');
         }
-        res.status(204).send();
+        res.status(204).send(result);
       } catch (error) {
         console.error('Error updating adoption status:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    app.patch('/update_pets/:id', verifyToken, async (req, res) => {
+      const petId = req.params.id;
+      const petData = req.body;
+
+      try {
+        const query = { _id: new ObjectId(petId) };
+        const update = { $set: petData };
+        const result = await petsCollection.updateOne(query, update);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ error: 'Pet not found' });
+        }
+
+        res.send({ message: 'Pet updated successfully' });
+      } catch (error) {
+        console.error('Error updating pet:', error);
         res.status(500).send('Internal Server Error');
       }
     });
