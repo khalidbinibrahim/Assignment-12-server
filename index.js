@@ -602,6 +602,28 @@ async function run() {
       }
     });
 
+    // PATCH (update) details of a donation campaign by ID
+    app.patch('/campaigns/:id', verifyToken, async (req, res) => {
+      const campaignId = req.params.id;
+      const campaignData = req.body;
+
+      try {
+        const query = { _id: new ObjectId(campaignId) };
+        const update = { $set: campaignData };
+        const result = await campaignsCollection.updateOne(query, update);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ error: 'Donation campaign not found' });
+        }
+
+        res.send({ message: 'Donation campaign updated successfully' });
+      } catch (error) {
+        console.error('Error updating donation campaign:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+
     // ==========----- DELETE (ADMIN) -----==========
     app.delete('/admin/delete_user/:id', verifyToken, verifyAdmin, async (req, res) => {
       const userId = req.params.id;
