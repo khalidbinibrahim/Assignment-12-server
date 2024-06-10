@@ -15,7 +15,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://khalid-bin-ibrahim-a12.web.app',
-    'https://khalid-bin-ibrahim-a12.firebaseapp.com'
+    'https://khalid-bin-ibrahim-a12.firebaseapp.com',
+    'https://khalid-bin-ibrahim-a12.netlify.app'
   ],
   credentials: true
 }));
@@ -546,8 +547,20 @@ async function run() {
     // update an adoption request
     app.patch('/adoption_requests/:id', verifyToken, async (req, res) => {
       const requestId = req.params.id;
+      const petId = req.query.petId;
       const { status } = req.body; // status can be 'accepted' or 'rejected'
       try {
+        if (status === 'accepted') {
+          await petsCollection.updateOne(
+            { _id: new ObjectId(petId) },
+            { $set: { adopted: true } }
+          )
+        } else {
+          await petsCollection.updateOne(
+            { _id: new ObjectId(petId) },
+            { $set: { adopted: false } }
+          )
+        }
         const result = await adoptionsCollection.updateOne(
           { _id: new ObjectId(requestId) },
           { $set: { status } }
