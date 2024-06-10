@@ -135,6 +135,11 @@ async function run() {
     });
 
     // ==========----- GET -----==========
+    app.get('/all_pets', async (req, res) => {
+      const pets = await petsCollection.find().toArray();
+      res.json(pets);
+    })
+
     // get all pets data from database
     app.get('/pets', async (req, res) => {
       const page = parseInt(req.query.page) || 1;
@@ -697,4 +702,5 @@ async function run() {
     // await client.close();
   }
 }
+
 run().catch(console.dir);
