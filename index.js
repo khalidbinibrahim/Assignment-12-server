@@ -112,6 +112,17 @@ async function run() {
       res.send({ admin });
     });
 
+    // get all donation campaigns
+    app.get('/admin/all_campaigns', verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const campaigns = await campaignsCollection.find().toArray();
+        res.json(campaigns);
+      } catch (error) {
+        console.error('Error fetching donation campaigns:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
+
     // GET all pets (protected)
     app.get('/admin/all_pets', verifyToken, verifyAdmin, async (req, res) => {
       try {
@@ -249,7 +260,7 @@ async function run() {
 
 
     // get currently logged in user donation campaigns
-    app.get('/user_donations', verifyToken, async (req, res) => {
+    app.get('/user_campaigns', verifyToken, async (req, res) => {
       const userEmail = req.user.email;
       try {
         const campaigns = await campaignsCollection.find({ userEmail }).sort({ createdAt: -1 }).toArray();
@@ -293,15 +304,8 @@ async function run() {
     // add a adoption request
     app.post('/adoptions', verifyToken, async (req, res) => {
       const adoption = req.body;
-      const { petId } = adoption;
       try {
         const result = await adoptionsCollection.insertOne(adoption);
-
-        const query = { _id: new ObjectId(petId) };
-
-        await petsCollection
-          .find(query)
-          .updateOne({ $set: { adopted: true } });
 
         res.status(201).send(result);
       } catch (error) {
@@ -480,6 +484,25 @@ async function run() {
       }
     });
 
+    // pause/unpause a donation campaign
+    app.patch('/admin/campaigns/pause/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const campaignId = req.params.id;
+      const { paused } = req.body;
+      try {
+        const result = await campaignsCollection.updateOne(
+          { _id: new ObjectId(campaignId) },
+          { $set: { paused: paused } }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: 'Campaign not found' });
+        }
+        res.status(200).json({ message: `Donation campaign ${paused ? 'paused' : 'unpaused'} successfully` });
+      } catch (error) {
+        console.error('Error pausing/unpausing campaign:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
+
     // ==========----- PATCH/PUT -----==========
     // PATCH (update) adoption status of a pet by ID
     app.patch('/pets/:id', verifyToken, async (req, res) => {
@@ -588,6 +611,21 @@ async function run() {
       } catch (error) {
         console.error('Error deleting pet:', error);
         res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // delete a donation campaign
+    app.delete('/admin/campaigns/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const campaignId = req.params.id;
+      try {
+        const result = await campaignsCollection.deleteOne({ _id: new ObjectId(campaignId) });
+        if (result.deletedCount === 0) {
+          return res.status(404).json({ error: 'Campaign not found' });
+        }
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error deleting campaign:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
       }
     });
 
