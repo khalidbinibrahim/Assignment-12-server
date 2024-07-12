@@ -135,6 +135,7 @@ async function run() {
     });
 
     // ==========----- GET -----==========
+    // get all pets data from database
     app.get('/all_pets', async (req, res) => {
       const pets = await petsCollection.find().toArray();
       res.json(pets);
