@@ -608,7 +608,17 @@ async function run() {
       const campaignId = req.params.id;
       const campaignData = req.body;
 
+      // Remove _id field from campaignData if it exists
+      if (campaignData._id) {
+        delete campaignData._id;
+      }
+
+      console.log(campaignData);
+
       try {
+        // const query = { _id: new ObjectId(campaignId) };
+        // const update = { $set: campaignData };
+        // const result = await campaignsCollection.updateOne(query, update);
         const query = { _id: new ObjectId(campaignId) };
         const update = { $set: campaignData };
         const result = await campaignsCollection.updateOne(query, update);
